@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrintFlow Pro | Precision & Ink Aggregator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@300;400;600&family=Fira+Code:wght@400&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+
+        #toastContainer {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 10000;
+}
+.toast {
+    background: #001e40;
+    color: white;
+    padding: 18px 25px;
+    border-left: 5px solid #ff7010;
+    margin-top: 10px;
+    font-family: 'Fira Code', monospace;
+    font-size: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    animation: toastSlide 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+@keyframes toastSlide {
+    from { transform: translateX(120%); }
+    to { transform: translateX(0); }
+}
+
+        #previewContainer {
+    background: rgba(0, 30, 64, 0.02);
+    border: 1px solid var(--border);
+    transition: 0.3s;
+}
+
+#filePreview {
+    filter: contrast(1.1) brightness(0.9);
+    border: 1px solid var(--border);
+}
+
+        :root {
+            --primary: #001e40;
+            --secondary: #0059bb;
+            --accent: #ff7010;
+            --bg: #f8f9fa;
+            --surface: #ffffff;
+            --text-main: #191c1d;
+            --text-dim: #71717a;
+            --border: rgba(0, 0, 0, 0.08);
+        }
+
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; letter-spacing: -0.02em; }
+
+        
+        .intro-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--primary); color: white;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999; transition: opacity 0.6s ease, visibility 0.6s;
+        }
+        .cursor { display: inline-block; width: 10px; height: 1.2rem; background: var(--accent); margin-left: 5px; animation: blink 1s step-end infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        .btn-skip {
+            position: absolute; bottom: 40px; right: 40px;
+            background: transparent; border: 1px solid rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.5); padding: 6px 14px; border-radius: 4px;
+            font-size: 9px; font-weight: 700; cursor: pointer;
+            letter-spacing: 1.5px; text-transform: uppercase; transition: all 0.3s ease;
+        }
+        .btn-skip:hover { color: white; border-color: var(--accent); opacity: 1; background: rgba(255, 112, 16, 0.1); }
+
+       
+        .hero { display: grid; grid-template-columns: repeat(12, 1fr); max-width: 1300px; margin: 80px auto; padding: 0 24px; gap: 40px; align-items: center; }
+        .hero-content { grid-column: span 7; }
+        .hero-image-container { grid-column: span 5; position: relative; height: 550px; overflow: hidden; border-radius: 4px; box-shadow: 20px 20px 60px rgba(0,0,0,0.05); }
+        .slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.5s ease-in-out; object-fit: cover; filter: grayscale(100%); }
+        .slide.active { opacity: 1; }
+
+        
+        nav { height: 80px; display: flex; align-items: center; justify-content: space-between; padding: 0 5%; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+        .logo { font-weight: 900; text-transform: uppercase; color: var(--primary); font-size: 1.2rem; }
+        .logo span { color: var(--accent); }
+
+        
+        .btn-primary { background: linear-gradient(135deg, #5a2200 0%, var(--accent) 100%); color: white; border: none; padding: 14px 28px; font-weight: 800; text-transform: uppercase; font-size: 11px; border-radius: 4px; cursor: pointer; transition: 0.3s; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(255, 112, 16, 0.2); }
+        
+        .btn-back { background: transparent; color: var(--primary); border: 1px solid var(--border); padding: 8px 16px; font-size: 10px; font-weight: 800; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+        .btn-back:hover { background: var(--bg); border-color: var(--primary); }
+
+        .label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; color: var(--accent); display: block; margin-bottom: 0.5rem; }
+        .glass-card { background: var(--surface); border: 1px solid var(--border); padding: 30px; border-radius: 4px; transition: 0.3s; position: relative; }
+        .glass-card:hover { border-color: var(--accent); }
+
+        /* Admin dashboard*/
+        .dashboard-nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; }
+        .nav-card { background: white; padding: 25px; border: 1px solid var(--border); cursor: pointer; transition: 0.3s; text-align: center; }
+        .nav-card.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .nav-card.active .label { color: var(--accent); }
+        
+        .terminal { background: #000; color: #bef264; padding: 20px; font-family: 'Fira Code', monospace; font-size: 11px; height: 400px; overflow-y: auto; }
+       /*full screen overlay used for login*/ 
+       .auth-overlay { position: fixed; inset: 0; background: rgba(0,30,64,0.98); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(10px); }
+
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.8s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    
+
+    <div id="adminAuth" class="auth-overlay hidden">
+        <div class="glass-card" style="width: 400px; text-align: center;">
+            <span class="label">Protocol: Admin_Access</span>
+            <h2 style="margin: 20px 0;">Verify Identity</h2>
+            <input type="password" id="adminPassword" placeholder="Enter Secret Key" style="width: 100%; padding: 15px; border: 1px solid var(--border); margin-bottom: 20px;">
+            <button class="btn-primary" style="width: 100%;" onclick="validateAdmin()">Access Dashboard</button>
+            <p onclick="location.reload()" style="margin-top: 20px; font-size: 11px; cursor: pointer; opacity: 0.5;">Return to Landing</p>
+        </div>
+    </div>
+
+    <div id="intro" class="intro-screen">
+        <div style="font-size: 1.5rem; font-weight: 800;"><span id="introText"></span><span class="cursor"></span></div>
+        <button class="btn-skip" onclick="skipIntro()">SKIP [ESC]</button>
+    </div>
+
+    <nav>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <div id="navBack" class="hidden">
+                <button class="btn-back" onclick="handleBack()">← BACK</button>
+            </div>
+            <div class="logo">PRINTFLOW <span>PRO</span></div>
+        </div>
+        <div id="navActions" class="hidden">
+            <button onclick="location.reload()" style="background:none; border:none; font-weight: 800; cursor: pointer; font-size: 11px; color: var(--primary);">DISCONNECT</button>
+        </div>
+    </nav>
+
+    <main class="app-container" style="max-width: 1400px; margin: 40px auto; padding: 0 40px;">
+        
+        <div id="landingPage" class="hero">
+            <div class="hero-content">
+                <span class="label">Precision Aggregator v3.2</span>
+                <h1 style="font-size: 5rem; margin: 20px 0;">Industrial Scale.<br><span style="color:var(--secondary)">Digital Control.</span></h1>
+                <p style="color: var(--text-dim); margin-bottom: 40px; font-size: 1.2rem; max-width: 500px;">Regional network for high-fidelity lithography. Select your shop to begin printing.</p>
+                <div style="display: flex; gap: 20px;">
+                    <button class="btn-primary" onclick="openDiscovery()">Start Printing</button>
+                    <button class="btn-primary" style="background: white; border: 1px solid var(--primary); color: var(--primary);" onclick="showAuth()">Admin Console</button>
+                </div>
+            </div>
+            <div class="hero-image-container">
+                <img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=1000&auto=format&fit=crop" class="slide active">
+    
+             <img src="https://images.unsplash.com/photo-1621905251189-08b45d6a269e?q=80&w=1000&auto=format&fit=crop" class="slide">
+    
+    
+            </div>
+        </div>
+
+        <div id="shopDiscovery" class="hidden fade-in">
+            <span class="label">Shop Selection</span>
+            <h1 style="margin: 20px 0 40px 0; font-size: 3rem;">Choose shop</h1>
+            <div id="shopGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;"></div>
+        </div>
+
+        <div id="customerApp" class="hidden fade-in">
+            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 40px;">
+                <div class="glass-card">
+                    <span class="label" id="activeShopName">Configuring Node</span>
+                    <h2 style="margin: 15px 0 30px 0;">Print Specification</h2>
+                    <form id="uploadForm">
+                        <label class="label" style="color:var(--text-dim)">Source File</label>
+                        <input type="file" id="fileInput" name="file" required style="width: 100%; margin-bottom: 25px;">
+
+                        <div id="previewContainer" class="hidden" style="margin-bottom: 25px; text-align: center; border: 1px dashed var(--border); padding: 10px; border-radius: 4px;">
+                        <span class="label" style="margin-bottom: 10px;">Pre-Production Preview</span>
+                        <img id="filePreview" src="#" alt="Preview" style="max-width: 100%; max-height: 200px; border-radius: 2px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                        <p id="fileNameDisplay" style="font-size: 10px; color: var(--text-dim); margin-top: 10px; font-family: 'Fira Code';"></p>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+                            <div>
+                                <label class="label" style="color:var(--text-dim)">Quality</label>
+                                <select id="paperType" name="paperType" style="width: 100%; padding: 12px; border: 1px solid var(--border);">
+                                    <option value="standard">Standard</option>
+                                    <option value="matte">Premium Matte</option>
+                                    <option value="glossy">Glossy Pro</option>
+                                    <option value="archival">Photo paper</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label" style="color:var(--text-dim)">Chromatics</label>
+                                <select id="colorMode" name="colorMode" style="width: 100%; padding: 12px; border: 1px solid var(--border);">
+                                    <option value="bw">B&W Only</option>
+                                    <option value="grayscale">Grayscale</option>
+                                    <option value="color">Full Color</option>
+                                </select>
+                            </div>
+                        </div>
+                        <label class="label" style="color:var(--text-dim)">Quantity</label>
+                        <input type="number" id="copies" name="copies" value="1" min="1" style="width: 100%; padding: 12px; border: 1px solid var(--border); margin-bottom: 25px;">
+                        <button class="btn-primary" style="width: 100%;">Deploy to Production</button>
+                    </form>
+                </div>
+                <div class="glass-card">
+                    <span class="label">Live Feed</span>
+                    <div id="customerQueue" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="shopApp" class="hidden">
+            <div class="glass-card" style="margin-bottom: 25px; border-left: 5px solid var(--accent);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 15px;">
+        <div>
+            <span class="label" style="display: block; margin-bottom: 5px;">Hardware Resource Monitor</span>
+            <h3 id="storageDetail" style="font-family: 'Fira Code', monospace; font-size: 14px; color: var(--secondary);">
+                DISK_QUOTA: SYNCING_FILESYSTEM...
+            </h3>
+        </div>
+        <div style="text-align: right;">
+            <span class="label">Available Capacity</span>
+            <div id="inkPercent" style="font-size: 2.5rem; font-weight: 800; line-height: 1;">100%</div>
+        </div>
+    </div>
+    
+    <div style="width: 100%; height: 10px; background: rgba(0,0,0,0.05); border-radius: 5px; overflow: hidden;">
+        <div id="inkBar" style="width: 100%; height: 100%; background: var(--accent); transition: width 1.5s cubic-bezier(0.19, 1, 0.22, 1);"></div>
+    </div>
+    
+    <div style="margin-top: 15px; display: flex; justify-content: space-between;">
+        <span class="label" id="refillBtn" onclick="refillInk()" style="cursor:pointer; color:var(--secondary); display:none; text-decoration: underline;">
+            [!] CRITICAL STORAGE: PURGE UPLOADS
+        </span>
+    </div>
+</div>
+
+            <div class="dashboard-nav">
+                <div class="nav-card active" onclick="filterAdmin('queue')">
+                    <span class="label">Live In Queue</span>
+                    <div id="activeCount" style="font-size: 2.5rem; font-weight: 800;">0</div>
+                </div>
+                <div class="nav-card" onclick="filterAdmin('revenue')">
+                    <span class="label">Revenue</span>
+                    <div id="revCount" style="font-size: 2.5rem; font-weight: 800;">₹0</div>
+                </div>
+                <div class="nav-card" onclick="filterAdmin('history')">
+                    <span class="label">Prints Done</span>
+                    <div id="archCount" style="font-size: 2.5rem; font-weight: 800;">0</div>
+                </div>
+                <div class="nav-card" onclick="filterAdmin('system')">
+    <span class="label">Server Status</span>
+    <div style="margin-top: 10px;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 5px;">
+            <span>UPTIME:</span> <span id="uptimeCounter">SYNCING...</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+            <span>NODE_ENV:</span> <span style="color:var(--accent)">PRODUCTION</span>
+        </div>
+    </div>
+</div>
+            </div>
+
+            <div class="glass-card" style="min-height: 500px;">
+                <div id="viewQueue" class="admin-view"></div>
+                <div id="viewRevenue" class="admin-view hidden">
+                    <h3 style="margin-bottom: 20px;">Financial Summary</h3>
+                    <div id="revenueList"></div>
+                </div>
+                <div id="viewHistory" class="admin-view hidden">
+                    <h3 style="margin-bottom: 20px;">Production History</h3>
+                    <div id="historyList"></div>
+                </div>
+                <div id="viewSystem" class="admin-view hidden">
+                    <div id="systemLogs" class="terminal"></div>
+                </div>
+            </div>
+        </div>
+        <div id="paymentGateway" class="hidden" style="position:fixed; inset:0; background:var(--primary); z-index:5000; display:flex; align-items:center; justify-content:center; flex-direction:column; color:white; font-family:'Fira Code', monospace;">
+    <div class="glass-card" style="width:450px; background:rgba(255,255,255,0.05); border-color:var(--accent); text-align:center; padding:50px;">
+        <span class="label" style="margin-bottom:30px;">Secure Transaction Gateway v4.0</span>
+        <h2 id="payAmount" style="font-size:3rem; margin-bottom:10px;">₹0.00</h2>
+        <p style="color:var(--text-dim); font-size:11px; margin-bottom:40px;">ENCRYPTED_ID: <span id="tempJobID"></span></p>
+        
+        <div id="paymentLoader" class="hidden">
+            <div class="cursor" style="width:40px; height:40px; border-radius:50%; border:3px solid var(--accent); border-top-color:transparent; animation: spin 0.8s linear infinite; margin: 0 auto 20px auto;"></div>
+            <p style="font-size:10px; letter-spacing:2px;">AUTHORIZING WITH BANK...</p>
+        </div>
+
+        <div id="cardDetails">
+            <input type="text" placeholder="CARD NUMBER" style="width:100%; background:transparent; border:1px solid var(--border); padding:15px; color:white; margin-bottom:15px; text-align:center;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:30px;">
+                <input type="text" placeholder="MM/YY" style="width:100%; background:transparent; border:1px solid var(--border); padding:15px; color:white; text-align:center;">
+                <input type="text" placeholder="CVV" style="width:100%; background:transparent; border:1px solid var(--border); padding:15px; color:white; text-align:center;">
+            </div>
+            <button class="btn-primary" style="width:100%;" onclick="executePayment()">Confirm & Pay</button>
+        </div>
+    </div>
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</div>
+    </main>
+
+    <script>
+        let pendingFormData = null;
+        const socket = io("http://localhost:5000");
+        const API = "http://localhost:5000";
+        let ADMIN_KEY = "";
+        let SELECTED_SHOP_ID = null;
+        let currentScreen = 'landing';
+
+        const fileInput = document.getElementById('fileInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const filePreview = document.getElementById('filePreview');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+
+        let currentInk = 100;
+
+function updateInkGauge(amount) {
+    currentInk = Math.max(0, currentInk - amount); // Don't go below 0
+    
+    const bar = document.getElementById('inkBar');
+    const text = document.getElementById('inkPercent');
+    const refill = document.getElementById('refillBtn');
+
+    bar.style.width = currentInk + "%";
+    text.innerText = currentInk + "%";
+
+    // Visual feedback when low
+    if (currentInk < 20) {
+        bar.style.background = "#ff4444";
+        refill.style.display = "block";
+    }
+}
+
+function refillInk() {
+    currentInk = 100;
+    const bar = document.getElementById('inkBar');
+    bar.style.background = "linear-gradient(90deg, #ff7010, #ffb010)";
+    document.getElementById('refillBtn').style.display = "none";
+    updateInkGauge(0);
+    notify("SYSTEM_MAINTENANCE: TONER REFILLED");
+}
+
+        // Notification helper
+function notify(msg) {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        document.body.appendChild(container);
+    }
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = `📡 SYSTEM_NOTIFY: ${msg}`;
+    container.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 5000);
+}
+
+// Real time listener
+socket.on("statusUpdate", (data) => {
+    notify(`ORDER ${data.printID} IS NOW ${data.status} AT ${data.shop.toUpperCase()}`);
+    
+    // Auto refresh the lists instantly
+    if (typeof loadJobs === "function") loadJobs();
+});
+
+        fileInput.onchange = evt => {
+        const [file] = fileInput.files;
+        if (file) {
+        // Show the container
+        previewContainer.classList.remove('hidden');
+        
+        // Display the name
+        fileNameDisplay.innerText = `FILE: ${file.name.toUpperCase()}`;
+
+        // If image, show the preview
+        if (file.type.startsWith('image/')) {
+            filePreview.src = URL.createObjectURL(file);
+            filePreview.classList.remove('hidden');
+        } else {
+            // For PDFs or other files, show a generic icon
+            filePreview.src = "https://cdn-icons-png.flaticon.com/512/337/337946.png"; 
+            filePreview.style.width = "50px"; // Make icon smaller
+        }
+    }
+};
+
+        
+        const lines = ["ESTABLISHING CONNECTION...", "SYNCING AVAILABLE SHOPS...", "PRINTFLOW PRO READY."];
+        let introIdx = 0;
+        let introTimer;
+
+        function runIntro() {
+    
+    const hasSeenIntro = localStorage.getItem('printFlowIntroPlayed');
+
+   /* if (hasSeenIntro) {
+        
+        const intro = document.getElementById("intro");
+        intro.style.display = "none"; 
+        return; 
+    }*/
+
+    
+    const el = document.getElementById("introText");
+    if (introIdx < lines.length) {
+        el.innerText = lines[introIdx++];
+        introTimer = setTimeout(runIntro, 1500);
+    } else {
+        completeIntro();
+    }
+}
+
+        function skipIntro() {
+    clearTimeout(introTimer);
+    completeIntro();
+}
+        function completeIntro() {
+    const intro = document.getElementById("intro");
+    intro.style.opacity = 0;
+    // SAVE THE FLAG SO IT DOESN'T PLAY AGAIN
+    localStorage.setItem('printFlowIntroPlayed', 'true');
+    setTimeout(() => intro.classList.add('hidden'), 600);
+}
+
+        // Close intro with ESC key
+        window.addEventListener('keydown', (e) => { if (e.key === "Escape") skipIntro(); });
+
+        // NAVIGATION HANDLERS
+        function setScreen(screenId) {
+            currentScreen = screenId;
+            ['landingPage', 'shopDiscovery', 'customerApp', 'shopApp'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(screenId).classList.remove('hidden');
+
+            const backBtn = document.getElementById('navBack');
+            screenId === 'landingPage' ? backBtn.classList.add('hidden') : backBtn.classList.remove('hidden');
+        }
+
+        function handleBack() {
+            if (currentScreen === 'shopDiscovery' || currentScreen === 'shopApp') setScreen('landingPage');
+            else if (currentScreen === 'customerApp') setScreen('shopDiscovery');
+        }
+
+        // CORE FUNCTIONS
+        function showAuth() { document.getElementById('adminAuth').classList.remove('hidden'); }
+        
+        async function validateAdmin() {
+    const key = document.getElementById('adminPassword').value;
+    
+    try {
+        // Test the key against the server
+        const res = await fetch(`${API}/print`, { 
+            headers: { 'x-admin-key': key } 
+        });
+
+        if (res.ok) {
+            ADMIN_KEY = key; // Store the successful key
+            const data = await res.json();
+            document.getElementById('adminAuth').classList.add('hidden');
+            
+            // Label the dashboard with the specific shop name
+            document.querySelector('#shopApp .label').innerText = `${data.shopName} COMMAND CENTER`;
+            
+            setScreen('shopApp');
+            renderLists(data.jobs, data.jobs); // Initial render
+        } else {
+            alert("TERMINAL_LOCKED: Invalid Credentials");
+        }
+    } catch (e) {
+        alert("CONNECTION_ERROR: Check Backend");
+    }
+}
+
+        async function openDiscovery() {
+            setScreen('shopDiscovery');
+            const res = await fetch(`${API}/shops`);
+            const shops = await res.json();
+            
+            document.getElementById('shopGrid').innerHTML = shops.map(shop => `
+                <div class="glass-card" onclick="selectNode('${shop.id}', '${shop.name}')" style="cursor:pointer">
+                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                        <div>
+                            <h3 style="font-weight:800;">${shop.name}</h3>
+                            <p style="font-size:11px; color:var(--text-dim); text-transform:uppercase;">${shop.address}</p>
+                        </div>
+                        <span class="label" style="background:rgba(255,112,16,0.1); padding:4px 8px; border-radius:4px;">${shop.activeJobs} ACTIVE</span>
+                    </div>
+                    <div style="margin-top:25px; display:flex; gap:20px; border-top:1px solid var(--border); padding-top:15px;">
+                        <b>~${shop.activeJobs * 5}M WAIT</b> | DISTANCE: SYNCING...
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectNode(id, name) {
+            SELECTED_SHOP_ID = id;
+            document.getElementById('activeShopName').innerText = `NODE: ${name.toUpperCase()}`;
+            setScreen('customerApp');
+            loadJobs();
+        }
+
+        // Image slider
+        let slideIdx = 0;
+setInterval(() => {
+    const allSlides = document.querySelectorAll('.slide'); // Find them every time
+    if (allSlides.length === 0) return; // Safety check
+
+    allSlides[slideIdx].classList.remove('active');
+    slideIdx = (slideIdx + 1) % allSlides.length;
+    allSlides[slideIdx].classList.add('active');
+}, 5000);
+
+       async function loadJobs() {
+    try {
+        const res = await fetch(`${API}/print`, { headers: { 'x-admin-key': ADMIN_KEY } });
+        const data = await res.json();
+        
+        // Extract the jobs array from the object
+        const jobsArray = data.jobs || []; 
+        
+        const displayJobs = SELECTED_SHOP_ID ? jobsArray.filter(j => j.shopId === SELECTED_SHOP_ID) : jobsArray;
+        renderLists(displayJobs, jobsArray);
+    } catch (e) { 
+        console.log("Sync Error:", e); 
+    }
+}
+
+        function renderLists(shopJobs, allJobs) {
+            const pending = allJobs.filter(j => j.status === 'pending');
+            const history = allJobs.filter(j => j.status !== 'pending');
+            
+            if(document.getElementById('activeCount')) {
+                document.getElementById('activeCount').innerText = pending.length;
+                document.getElementById('archCount').innerText = history.length;
+                document.getElementById('revCount').innerText = "₹" + allJobs.reduce((a,b) => a + (b.price || 0), 0);
+            }
+
+            document.getElementById('customerQueue').innerHTML = shopJobs.slice().reverse().map(j => `
+                <div style="padding:15px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                    <div><b>${j.printID}</b><br><small>${j.fileName.split('-').pop()}</small></div>
+                    <div style="text-align:right"><b>₹${j.price}</b><br><span style="font-size:9px; font-weight:800; color:var(--accent);">${j.status}</span></div>
+                </div>
+            `).join('');
+
+            document.getElementById('viewQueue').innerHTML = pending.map(j => `
+    <div style="padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.02);">
+        <div>
+            <span class="label" style="color:var(--accent)">${j.printID}</span>
+            <div style="font-weight:800; margin: 5px 0;">${j.shopId.toUpperCase()} NODE</div>
+            
+            <a href="${API}/uploads/${j.fileName}" target="_blank" style="color:var(--secondary); font-size:11px; text-decoration:none; display:flex; align-items:center; gap:5px;">
+                <span>📄 VIEW_SOURCE_ARTIFACT</span>
+            </a>
+            
+            <div style="font-size:10px; opacity:0.5; margin-top:5px;">
+                ${j.paperType.toUpperCase()} // ${j.colorMode.toUpperCase()} // ${j.copies} COPIES
+            </div>
+        </div>
+        
+        <div style="text-align:right;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="markDone('${j._id}')">
+                RELEASE_INK
+            </button>
+        </div>
+    </div>
+`).join('');
+
+            document.getElementById('historyList').innerHTML = history.map(j => `<div style="padding:10px; opacity:0.5; font-size:12px;">${j.printID} - FINALIZED</div>`).join('');
+            document.getElementById('revenueList').innerHTML = allJobs.map(j => `<div style="padding:10px; display:flex; justify-content:space-between; font-size:12px;"><span>${j.printID}</span> <b>₹${j.price}</b></div>`).join('');
+        }
+
+       async function markDone(id) {
+    
+    if (!ADMIN_KEY) {
+        alert("TERMINAL_LOCKED: No Admin Key Found.");
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API}/print/${id}`, { 
+            method: 'PATCH', 
+            headers: { 
+                'x-admin-key': ADMIN_KEY, 
+                'Content-Type': 'application/json'
+            } 
+        });
+
+        if (res.ok) {
+            // Success Reload the jobs to see the change
+            loadJobs();
+            // If you have the log terminal active:
+            if (typeof addLog === "function") addLog(`ACTION: Ink released for job ${id}.`);
+        } else if (res.status === 403) {
+            alert("SECURITY_ALERT: You are not authorized to finalize this job.");
+        } else {
+            alert("SYSTEM_ERROR: Could not update status.");
+        }
+    } catch (e) {
+        console.error("Connection to Node failed.", e);
+    }
+
+    if (res.ok) {
+        // Calculate ink usage, Color jobs use more ink than B&W
+        // can fetch the job details first or just use a standard 2%
+        updateInkGauge(2); 
+        loadJobs();
+    }
+}
+
+        function filterAdmin(view) {
+            document.querySelectorAll('.admin-view').forEach(v => v.classList.add('hidden'));
+            document.querySelectorAll('.nav-card').forEach(c => c.classList.remove('active'));
+            document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1)).classList.remove('hidden');
+            event.currentTarget.classList.add('active');
+        }
+
+        
+
+document.getElementById('uploadForm').onsubmit = async (e) => {
+    e.preventDefault();
+    
+    // Capture the form data
+    pendingFormData = new FormData(e.target);
+
+    if (!SELECTED_SHOP_ID) {
+        alert("Please select a shop node first.");
+        return;
+    }
+    
+    // IMPORTANT Re-verify the file is actually in the FormData
+    const fileField = document.getElementById('fileInput').files[0];
+    if (!fileField) {
+        alert("Please select a file first.");
+        return;
+    }
+    
+    // Add the shopId manually
+    pendingFormData.append('shopId', SELECTED_SHOP_ID);
+    
+    // Dynamic Price Calculation
+    const copies = document.getElementById('copies').value;
+    const paper = document.getElementById('paperType').value;
+    const multipliers = { standard: 1, matte: 1.5, glossy: 2.5, archival: 5 };
+    const estimate = (10 * multipliers[paper] * copies).toFixed(2); 
+    
+    // Update and show Payment Overlay
+    document.getElementById('payAmount').innerText = `₹${estimate}`;
+    document.getElementById('tempJobID').innerText = Math.random().toString(36).substring(7).toUpperCase();
+    document.getElementById('paymentGateway').classList.remove('hidden');
+};
+
+async function syncSystemHealth() {
+    try {
+        const res = await fetch(`${API}/system-health`);
+        const data = await res.json();
+        
+        // Update the Bar
+        document.getElementById('inkBar').style.width = data.inkRemaining + "%";
+        
+        // Update the Text
+        document.getElementById('inkPercent').innerText = data.inkRemaining + "%";
+        
+        // Update the Detail Label
+        const mbUsed = (data.bytesUsed / (1024 * 1024)).toFixed(2);
+        document.getElementById('storageDetail').innerText = 
+            `DISK_QUOTA: ${mbUsed}MB / 50MB [${data.filesCount} ARTIFACTS]`;
+
+        // Change color to red if low
+        if (data.inkRemaining < 20) {
+    document.getElementById('inkBar').style.background = "#ff4444"; // Danger Red
+    document.getElementById('refillBtn').style.display = "block";   // Show Purge button
+} else if (data.inkRemaining < 50) {
+    document.getElementById('inkBar').style.background = "#ffb010"; // Warning Yellow
+} else {
+    document.getElementById('inkBar').style.background = "#00ff88"; // Healthy Green
+}
+    } catch (e) {
+        console.log("Telemetry Offline");
+    }
+
+    
+const artifactCounter = document.getElementById('artifactTotal');
+if (artifactCounter) artifactCounter.innerText = data.filesCount;
+}
+
+async function refillInk() {
+    if(!confirm("CRITICAL: This will delete all uploaded files from the server. Proceed?")) return;
+
+    try {
+        const res = await fetch(`${API}/system-refill`, { method: 'POST' });
+        if (res.ok) {
+            notify("STORAGE_PURGED: SERVER CAPACITY RESTORED");
+            syncSystemHealth(); // Refresh the gauge immediately
+        }
+    } catch (e) {
+        notify("ERROR: PURGE_FAILED");
+    }
+}
+
+// Add a simple uptime counter just for show
+setInterval(() => {
+    const uptimeElement = document.getElementById('uptimeCounter');
+    if (uptimeElement) {
+        const seconds = Math.floor(performance.now() / 1000);
+        uptimeElement.innerText = `${seconds}s`;
+    }
+}, 1000);
+
+// Start the loop
+setInterval(syncSystemHealth, 5000);
+// Run once immediately on load
+syncSystemHealth();
+
+async function executePayment() {
+    // Get the total price from the UI
+    const priceText = document.getElementById('payAmount').innerText.replace('₹', '');
+    const amount = parseFloat(priceText);
+
+    // Ask backend to create a Razorpay Order
+    const orderRes = await fetch(`${API}/create-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount })
+    });
+    const orderData = await orderRes.json();
+
+    // Configure Razorpay Options
+    const options = {
+        "key": "rzp_test_SiHr3h1kvKU7O3", 
+        "amount": orderData.amount,
+        "currency": "INR",
+        "name": "PrintFlow Pro",
+        "description": "High-Fidelity Lithography",
+        "order_id": orderData.id, 
+        "handler": async function (response) {
+            // THIS RUNS ONLY IF PAYMENT SUCCEEDS
+            notify("PAYMENT_ID: " + response.razorpay_payment_id);
+            
+            // Now send the actual print file to the backend
+            const finalRes = await fetch(`${API}/print`, { 
+                method: 'POST', 
+                body: pendingFormData 
+            });
+            const job = await finalRes.json();
+            
+            document.getElementById('paymentGateway').classList.add('hidden');
+            showSuccessModal(job.printID);
+        },
+        "prefill": {
+            "name": "Customer Name",
+            "email": "customer@example.com"
+        },
+        "theme": { "color": "#ff7010" } 
+    };
+
+    const rzp1 = new Razorpay(options);
+    rzp1.open();
+}
+
+function showSuccessModal(id) {
+    const successHTML = `
+        <div id="successToken" class="glass-card fade-in" style="position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:6000; text-align:center; width:350px; border:2px solid var(--accent);">
+            <span class="label">Transmission Successful</span>
+            <h1 style="font-size:3rem; margin:10px 0; color:var(--primary);">${id}</h1>
+            <p style="font-size:12px; color:var(--text-dim); margin-bottom:20px;">Show this ID at the counter to collect your print.</p>
+            <button class="btn-primary" onclick="location.reload()">Done</button>
+        </div>
+        <div style="position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:5999; backdrop-filter:blur(10px);"></div>`;
+    document.body.insertAdjacentHTML('beforeend', successHTML);
+}
+       
+        
+
+        window.onload = runIntro;
+        setInterval(loadJobs, 4000);
+    </script>
+</body>
+</html>
